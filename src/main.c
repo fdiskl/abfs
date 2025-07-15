@@ -2,6 +2,7 @@
 #include "../include/search.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define FILE_PATH "input.txt"
 
@@ -27,6 +28,10 @@ int main(void) {
   }
 
   int *visited = (int *)malloc(n * sizeof(int));
+  memset(visited, 0, n * sizeof(int));
 
   dfs(n, 0, graph, visited);
+
+  memset(visited, 0, n * sizeof(int));
+  bfs(n, 0, graph, visited);
 }
