@@ -27,11 +27,8 @@ int main(void) {
     printf("\n");
   }
 
-  int *visited = (int *)malloc(n * sizeof(int));
-  memset(visited, 0, n * sizeof(int));
-
-  dfs(n, 0, graph, visited);
-
-  memset(visited, 0, n * sizeof(int));
-  bfs(n, 0, graph, visited);
+  printf("--DFS--\n");
+  run_dfs(n, 0, graph);
+  printf("--BFS--\n");
+  run_bfs(n, 0, graph);
 }
