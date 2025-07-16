@@ -36,7 +36,7 @@ void bfs(int n, int start, graph_t g, int *visited, FILE *f) {
   free(queue);
 }
 
-void dijkstra(int n, long double **g, int start) {
+long double *dijkstra(int n, long double **g, int start) {
   long double *distances = (long double *)malloc(n * sizeof(long double));
   char *visited = (char *)calloc(n, sizeof(char));
 
@@ -61,7 +61,7 @@ void dijkstra(int n, long double **g, int start) {
 
     for (int v = 0; v < n; v++) {
       long double weight = g[node->v][v];
-      if (weight >= 0 && !visited[v]) {
+      if (weight > 0 && !visited[v]) {
         long double alt = distances[node->v] + weight;
         if (alt < distances[v]) {
           distances[v] = alt;
@@ -71,14 +71,8 @@ void dijkstra(int n, long double **g, int start) {
     }
   }
 
-  for (int i = 0; i < n; i++) {
-    if (distances[i] == DBL_MAX)
-      printf("Distance to %d: INF\n", i);
-    else
-      printf("Distance to %d: %.2Lf\n", i, distances[i]);
-  }
-
-  free(distances);
   free(visited);
   freeMinHeap(heap);
+
+  return distances;
 }

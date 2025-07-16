@@ -1,8 +1,6 @@
 #include "../include/input.h"
 #include "../include/search.h"
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
 #define FILE_PATH "input.txt"
 
@@ -31,4 +29,9 @@ int main(void) {
   run_dfs(n, 0, graph);
   printf("--BFS--\n");
   run_bfs(n, 0, graph);
+  printf("--DIJKSTRA--\n");
+  long double *distances = dijkstra(n, graph, 0);
+  for (int i = 0; i < n; i++)
+    printf("%Lf ", distances[i]);
+  printf("\n");
 }

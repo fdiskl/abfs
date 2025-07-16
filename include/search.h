@@ -13,7 +13,9 @@ void dfs(int n, int node, graph_t g, int *visited, FILE *f);
 // visited should be N
 void bfs(int n, int node, graph_t g, int *visited, FILE *f);
 
-void dijkstra(int n, graph_t g, int start);
+// g should be NxN
+// returns array of len N with distances from start to node i
+long double *dijkstra(int n, graph_t g, int start);
 
 static inline void run_dfs(int n, int start, graph_t g) {
   int *visited = (int *)calloc(n, sizeof(int));
