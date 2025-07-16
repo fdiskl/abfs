@@ -76,3 +76,43 @@ long double *dijkstra(int n, long double **g, int start) {
 
   return distances;
 }
+
+void greedy(int n, int start, graph_t g, int *path, int *visited) {
+  for (int i = 0; i < n; i++)
+    visited[i] = 0;
+
+  int curr = 0;
+  int current = start;
+
+  path[curr++] = current;
+  visited[current] = 1;
+
+  for (int step = 1; step < n; step++) {
+    int min = -69;
+    int minIdx = -1;
+
+    for (int i = 0; i < n; i++) {
+      if (!visited[i] && g[current][i] > 0) {
+        if (min == -69 || g[current][i] < min) {
+          min = g[current][i];
+          minIdx = i;
+        }
+      }
+    }
+
+    if (minIdx == -1)
+      break;
+
+    current = minIdx;
+    path[curr++] = current;
+    visited[current] = 1;
+  }
+
+  if (g[current][start] > 0) {
+    path[curr++] = start;
+  } else {
+    // idk do smth mb
+  }
+
+  path[curr] = -1;
+}

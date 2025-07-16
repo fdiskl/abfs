@@ -2,7 +2,8 @@
 #include "../include/search.h"
 #include <stdio.h>
 
-#define FILE_PATH "input.txt"
+#define FILE_PATH "./berlin52.txt"
+#define ANSWER_FILE_PATH "./berlin52_answer.txt"
 
 int main(void) {
   FILE *f = fopen(FILE_PATH, "r");
@@ -17,6 +18,8 @@ int main(void) {
   if ((n = read(&graph, f)) == -1) {
     return 1;
   }
+
+  fclose(f);
 
   for (int i = 0; i < n; i++) {
     for (int j = 0; j < n; j++) {
@@ -34,4 +37,15 @@ int main(void) {
   for (int i = 0; i < n; i++)
     printf("%Lf ", distances[i]);
   printf("\n");
+  printf("--GREEDY--\n");
+  run_greedy(n, graph);
+
+  FILE *ff = fopen(ANSWER_FILE_PATH, "r");
+  if (!ff) {
+    printf("NO ANSWER\n");
+  }
+  int *arr;
+  int k = read_answer(ff, &arr);
+  printf("ANSWER (%d)\n", k);
+  calculate_path_len(k, n, arr, graph);
 }
