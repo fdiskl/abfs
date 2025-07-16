@@ -24,5 +24,6 @@ min_heap_n *extractMin(min_heap *heap);
 void decKey(min_heap *heap, int vertex, long double dist);
 int isInMinHeap(min_heap *heap, int vertex);
 void minHeapify(min_heap *h, int i);
+void insertMinHeap(min_heap *h, int v, long double dist);
 
 #endif

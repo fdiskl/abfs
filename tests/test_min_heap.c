@@ -98,12 +98,35 @@ void test_isInMinHeap() {
   freeMinHeap(heap);
 }
 
+void test_insertMinHeap() {
+  min_heap *heap = createMinHeap(5);
+  insertMinHeap(heap, 2, 5.0);
+  insertMinHeap(heap, 1, 3.0);
+  insertMinHeap(heap, 3, 4.0);
+  insertMinHeap(heap, 0, 1.0);
+  insertMinHeap(heap, 4, 2.0);
+
+  int correct_order[] = {0, 4, 1, 3, 2};
+  int pass = 1;
+  for (int i = 0; i < 5; i++) {
+    min_heap_n *min = extractMin(heap);
+    if (!min || min->v != correct_order[i]) {
+      pass = 0;
+    }
+    free(min);
+  }
+  printf("test_insertMinHeap (order): %s\n", pass ? "PASS" : "FAIL");
+
+  freeMinHeap(heap);
+}
+
 int main() {
   test_createMinHeap();
   test_isEmpty();
   test_extractMin_and_insert_simulation();
   test_decKet();
   test_isInMinHeap();
+  test_insertMinHeap();
 
   return 0;
 }

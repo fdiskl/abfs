@@ -90,3 +90,23 @@ void decKey(min_heap *h, int v, long double dist) {
 }
 
 int isInMinHeap(min_heap *h, int v) { return h->pos[v] < h->size; }
+
+void insertMinHeap(min_heap *h, int v, long double dist) {
+  if (h->size == h->cap)
+    return;
+
+  int i = h->size;
+  h->arr[i] = newMinHeapNode(v, dist);
+  h->pos[v] = i;
+  h->size++;
+
+  while (i && h->arr[i]->dist < h->arr[(i - 1) / 2]->dist) {
+    int parent = (i - 1) / 2;
+
+    h->pos[h->arr[i]->v] = parent;
+    h->pos[h->arr[parent]->v] = i;
+
+    swapMinHeapNode(&h->arr[i], &h->arr[parent]);
+    i = parent;
+  }
+}

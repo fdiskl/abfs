@@ -11,7 +11,9 @@ void dfs(int n, int node, graph_t g, int *visited, FILE *f);
 
 // g should be NxN
 // visited should be N
-void bfs(int n, int start, graph_t g, int *visited, FILE *f);
+void bfs(int n, int node, graph_t g, int *visited, FILE *f);
+
+void dijkstra(int n, graph_t g, int start);
 
 static inline void run_dfs(int n, int start, graph_t g) {
   int *visited = (int *)calloc(n, sizeof(int));
