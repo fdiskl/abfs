@@ -58,25 +58,27 @@ pub fn run(
     n_ants: usize,
     n_nodes: usize,
     evap_mult: f32,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<(Vec<usize>, f32)> {
     let graph = &g.values;
 
+    let mut best_path = vec![];
+    let mut best_score = f32::INFINITY;
+
     for _ in 0..n_iters {
-        let all_deltas: Vec<Vec<f32>> = (0..n_ants)
+        let results: Vec<(Vec<usize>, f32, Vec<f32>)> = (0..n_ants)
             .into_par_iter()
             .map(|_| {
-                let mut delta = vec![0.0f32; n_nodes * n_nodes];
-
                 let (path, score) = find_path(graph, &p.values, n_nodes, 0);
+                let mut delta = vec![0.0f32; n_nodes * n_nodes];
 
                 for i in 0..path.len() - 1 {
                     let from = path[i];
                     let to = path[i + 1];
-                    delta[from * n_nodes + to] += score;
-                    delta[to * n_nodes + from] += score;
+                    delta[from * n_nodes + to] += 1.0 / score;
+                    delta[to * n_nodes + from] += 1.0 / score;
                 }
 
-                delta
+                (path, score, delta)
             })
             .collect();
 
@@ -84,11 +86,18 @@ pub fn run(
         let pher = &mut p.values;
         pher.par_iter_mut().enumerate().for_each(|(i, pher_val)| {
             *pher_val *= evap_mult;
-            for delta in &all_deltas {
+            for (_, _, delta) in &results {
                 *pher_val += delta[i];
             }
         });
+
+        for (path, score, _) in results {
+            if score < best_score {
+                best_score = score;
+                best_path = path;
+            }
+        }
     }
 
-    Ok(())
+    Ok((best_path, best_score))
 }
