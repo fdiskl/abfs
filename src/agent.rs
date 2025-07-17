@@ -58,6 +58,7 @@ fn find_path(
     }
 
     path.push(start);
+    cost += g[curr * n_nodes + start];
 
     (path, cost)
 }
@@ -86,7 +87,7 @@ pub fn run(
     let mut all_pheromones_sum = vec![];
     all_pheromones_sum.reserve(n_iters);
 
-    for i in 0..n_iters {
+    for j in 0..n_iters {
         let results: Vec<(Vec<usize>, f32, Vec<f32>)> = (0..n_ants)
             .into_par_iter()
             .map(|_| {
@@ -111,7 +112,7 @@ pub fn run(
             .par_iter_mut()
             .enumerate()
             .map(|(i, pher_val)| {
-                if i % reset_time == 0 {
+                if j % reset_time == 0 {
                     *pher_val *= 1.0 - reset_rho;
                 } else {
                     *pher_val *= 1.0 - rho;

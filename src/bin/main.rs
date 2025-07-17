@@ -1,8 +1,12 @@
-use anyhow::anyhow;
 use chrono::Local;
 use plotters::prelude::*;
+use rand::Rng;
+use rand::distr::uniform;
 use std::fs::{File, create_dir_all};
 use std::io::Write;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::{thread, time};
 
 use abfs::{
     agent::run,
@@ -19,27 +23,72 @@ fn main() -> anyhow::Result<()> {
     let (g, n) = read_graph(&mut f)?;
     let answer = read_answer(&mut answer_f, n)?;
 
-    let mut p = Pheromones::new(n);
+    let keep_running = Arc::new(AtomicBool::new(true));
+    let r = keep_running.clone();
 
-    // ==== Parameters ====
-    let n_iters = 10000;
-    let n_ants = 4;
-    let alpha = 1.8;
-    let beta = 2.0;
-    let rho = 0.2;
-    let reset_time = 1000;
-    let reset_rho = 0.6;
-    let pheta = 11.0;
+    ctrlc::set_handler(move || {
+        r.store(false, Ordering::SeqCst);
+    })?;
 
-    let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
+    while keep_running.load(Ordering::SeqCst) {
+        let alpha = rand_range(0.5..3.0);
+        let beta = rand_range(0.5..4.0);
+        let rho = rand_range(0.01..0.5);
+        let reset_time = rand_range(50..1000) as usize;
+        let reset_rho = rand_range(0.0..0.8);
+        let pheta = rand_range(25.0..300.0);
+        let n_ants = 8;
+        let n_iters = 5000;
+
+        let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
+        let mut p = Pheromones::new(n);
+
+        println!(
+            "Running with alpha={:.2}, beta={:.2}, rho={:.2}, reset_time={}, reset_rho={:.2}, pheta={:.2}, ants={}",
+            alpha, beta, rho, reset_time, reset_rho, pheta, n_ants
+        );
+
+        let result = run_simulation(
+            &g, &answer, &mut p, n, n_iters, n_ants, alpha, beta, rho, reset_time, reset_rho,
+            pheta, &timestamp,
+        );
+
+        if let Err(e) = result {
+            eprintln!("Simulation failed: {:?}", e);
+        }
+
+        thread::sleep(time::Duration::from_millis(100)); // Avoid too rapid looping
+    }
+
+    println!("Exiting gracefully.");
+    Ok(())
+}
+
+fn run_simulation(
+    g: &Graph,
+    answer: &Vec<usize>,
+    p: &mut Pheromones,
+    n: usize,
+    n_iters: usize,
+    n_ants: usize,
+    alpha: f32,
+    beta: f32,
+    rho: f32,
+    reset_time: usize,
+    reset_rho: f32,
+    pheta: f32,
+    timestamp: &str,
+) -> anyhow::Result<()> {
+    let t1 = Local::now();
 
     let (path, score, scores, phers) = run(
-        &g, &mut p, n_iters, n_ants, n, rho, alpha, beta, reset_time, reset_rho, pheta,
+        g, p, n_iters, n_ants, n, rho, alpha, beta, reset_time, reset_rho, pheta,
     )?;
 
-    // ==== Save parameters ====
+    let t2 = Local::now();
+
     let params_path = format!("results/params_{}.txt", timestamp);
-    match write_params(
+    write_params(
         &params_path,
         &[
             ("alpha", alpha),
@@ -51,22 +100,22 @@ fn main() -> anyhow::Result<()> {
             ("ants", n_ants as f32),
             ("iters", n_iters as f32),
             ("score", score),
+            ("result", g.calc_distance(&path, n)),
+            ("time (ms)", (t2 - t1).num_milliseconds() as f32),
         ],
-    ) {
-        Err(e) => return Err(anyhow!(format!("{e:?}"))),
-        _ => {}
-    };
+    );
 
-    // ==== Save graphs ====
-    match build_graph(&timestamp, scores, phers) {
-        Err(e) => return Err(anyhow!(format!("{e:?}"))),
-        _ => {}
-    }
+    // build_graph(timestamp, scores, phers);
 
-    println!("RESULT: {:?}", g.calc_distance(path, n));
-    println!("ANSWER: {:?}", g.calc_distance(answer, n));
-
+    println!("RESULT: {:?}", g.calc_distance(&path, n));
+    println!("ANSWER: {:?}", g.calc_distance(&answer, n));
     Ok(())
+}
+
+fn rand_range<T: uniform::SampleUniform + Copy + std::cmp::PartialOrd>(
+    range: std::ops::Range<T>,
+) -> T {
+    rand::rng().random_range(range)
 }
 
 fn write_params(path: &str, params: &[(&str, f32)]) -> Result<(), Box<dyn std::error::Error>> {
@@ -116,10 +165,7 @@ fn plot_single_series(
         .y_desc(y_label)
         .draw()?;
 
-    chart.draw_series(LineSeries::new(
-        x_range.clone().zip(data.iter().copied()),
-        &RED,
-    ))?;
+    chart.draw_series(LineSeries::new(x_range.zip(data.iter().copied()), &RED))?;
 
     Ok(())
 }

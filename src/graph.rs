@@ -6,7 +6,7 @@ pub struct Graph {
 }
 
 impl Graph {
-    pub fn calc_distance(&self, path: Vec<usize>, n: usize) -> f32 {
+    pub fn calc_distance(&self, path: &Vec<usize>, n: usize) -> f32 {
         assert_eq!(path.len(), n + 1);
         let mut res = 0.0;
         for i in 0..path.len() - 1 {
