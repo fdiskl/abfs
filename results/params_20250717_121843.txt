@@ -1,9 +1,0 @@
-alpha = 0.2
-beta = 2
-rho = 1.8
-reset_time = 1000
-reset_rho = 0.6
-pheta = 11
-ants = 4
-iters = 10000
-score = 12604

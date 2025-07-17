@@ -24,9 +24,9 @@ fn main() -> anyhow::Result<()> {
     // ==== Parameters ====
     let n_iters = 10000;
     let n_ants = 4;
-    let alpha = 0.2;
+    let alpha = 1.8;
     let beta = 2.0;
-    let rho = 1.8;
+    let rho = 0.2;
     let reset_time = 1000;
     let reset_rho = 0.6;
     let pheta = 11.0;
