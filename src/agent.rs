@@ -1,6 +1,11 @@
 use std::sync::Arc;
 
-use rand::distr::{Distribution, weighted::WeightedIndex};
+use rand::{
+    Rng, SeedableRng,
+    distr::{Distribution, weighted::WeightedIndex},
+    rngs::SmallRng,
+};
+use rand_chacha::ChaCha8Rng;
 use rayon::prelude::*;
 
 use crate::graph::{Graph, Pheromones};
@@ -12,14 +17,16 @@ fn find_path(
     start: usize,
     alpha: f32,
     beta: f32,
+    seed: [u8; 32],
 ) -> (Vec<usize>, f32) {
     let mut path = vec![start];
     path.reserve(n_nodes + 1);
     let mut visited = vec![false; n_nodes];
     visited[start] = true;
 
-    let mut rng = rand::rng();
     let mut curr = start;
+
+    let mut rng = SmallRng::from_seed(seed);
 
     let mut cost = 0.0;
 
@@ -75,6 +82,7 @@ pub fn run(
     reset_time: usize,
     reset_rho: f32,
     pheta: f32,
+    seed: &[u8; 32],
 ) -> anyhow::Result<(Vec<usize>, f32, Vec<f32>, Vec<f32>)> {
     let graph = &g.values;
 
@@ -91,7 +99,8 @@ pub fn run(
         let results: Vec<(Vec<usize>, f32, Vec<f32>)> = (0..n_ants)
             .into_par_iter()
             .map(|_| {
-                let (path, score) = find_path(graph, &p.values, n_nodes, 0, alpha, beta);
+                let (path, score) =
+                    find_path(graph, &p.values, n_nodes, 0, alpha, beta, seed.clone());
                 let mut delta = vec![0.0f32; n_nodes * n_nodes];
 
                 for i in 0..path.len() - 1 {

@@ -1,7 +1,9 @@
 use chrono::Local;
 use plotters::prelude::*;
-use rand::Rng;
 use rand::distr::uniform;
+use rand::rngs::SmallRng;
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha8Rng;
 use std::fs::{File, create_dir_all};
 use std::io::Write;
 use std::sync::Arc;
@@ -31,6 +33,9 @@ fn main() -> anyhow::Result<()> {
     })?;
 
     while keep_running.load(Ordering::SeqCst) {
+        let mut seed = [0u8; 32];
+        rand::rng().fill(&mut seed);
+
         let alpha = rand_range(0.5..3.0);
         let beta = rand_range(0.5..4.0);
         let rho = rand_range(0.01..0.5);
@@ -50,7 +55,7 @@ fn main() -> anyhow::Result<()> {
 
         let result = run_simulation(
             &g, &answer, &mut p, n, n_iters, n_ants, alpha, beta, rho, reset_time, reset_rho,
-            pheta, &timestamp,
+            pheta, &timestamp, &seed,
         );
 
         if let Err(e) = result {
@@ -78,11 +83,12 @@ fn run_simulation(
     reset_rho: f32,
     pheta: f32,
     timestamp: &str,
+    seed: &[u8; 32],
 ) -> anyhow::Result<()> {
     let t1 = Local::now();
 
     let (path, score, scores, phers) = run(
-        g, p, n_iters, n_ants, n, rho, alpha, beta, reset_time, reset_rho, pheta,
+        g, p, n_iters, n_ants, n, rho, alpha, beta, reset_time, reset_rho, pheta, seed,
     )?;
 
     let t2 = Local::now();
@@ -103,6 +109,7 @@ fn run_simulation(
             ("result", g.calc_distance(&path, n)),
             ("time (ms)", (t2 - t1).num_milliseconds() as f32),
         ],
+        &seed,
     );
 
     // build_graph(timestamp, scores, phers);
@@ -118,11 +125,18 @@ fn rand_range<T: uniform::SampleUniform + Copy + std::cmp::PartialOrd>(
     rand::rng().random_range(range)
 }
 
-fn write_params(path: &str, params: &[(&str, f32)]) -> Result<(), Box<dyn std::error::Error>> {
+fn write_params(
+    path: &str,
+    params: &[(&str, f32)],
+    seed_bytes: &[u8; 32],
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut file = File::create(path)?;
     for (name, value) in params {
         writeln!(file, "{} = {}", name, value)?;
     }
+
+    writeln!(file, "seed_bytes = {}", hex::encode(seed_bytes))?;
+
     Ok(())
 }
 
