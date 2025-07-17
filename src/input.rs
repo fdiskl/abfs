@@ -22,6 +22,18 @@ pub fn read_graph<R: Read>(r: &mut R) -> io::Result<(Graph, usize)> {
     ))
 }
 
+pub fn read_answer<R: Read>(r: &mut R, n: usize) -> io::Result<Vec<usize>> {
+    let mut vals = vec![];
+    vals.reserve(n);
+
+    for _ in 0..n + 1 {
+        let num: usize = read_number(r)?;
+        vals.push(num - 1);
+    }
+
+    Ok(vals)
+}
+
 fn read_number<R: Read, T: std::str::FromStr>(reader: &mut R) -> io::Result<T>
 where
     T::Err: std::fmt::Debug,

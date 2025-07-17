@@ -7,6 +7,7 @@ pub struct Graph {
 
 impl Graph {
     pub fn calc_distance(&self, path: Vec<usize>, n: usize) -> f32 {
+        assert_eq!(path.len(), n + 1);
         let mut res = 0.0;
         for i in 0..path.len() - 1 {
             let from = path[i];
@@ -24,7 +25,14 @@ pub struct Pheromones {
 impl Pheromones {
     pub fn new(n: usize) -> Self {
         Self {
-            values: vec![1000.0; n * n],
+            values: vec![0.0; n * n],
+        }
+    }
+
+    pub fn reset(&mut self) {
+        let len = self.values.len();
+        for val in self.values.iter_mut().take(len - 1) {
+            *val = 0.0;
         }
     }
 }
