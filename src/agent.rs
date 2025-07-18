@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{fs::OpenOptions, sync::Arc};
 
 use rand::{
     Rng, RngCore, SeedableRng,
@@ -17,7 +17,7 @@ fn find_path(
     start: usize,
     alpha: f32,
     beta: f32,
-    seed: [u8; 32],
+    rng: &mut SmallRng,
 ) -> (Vec<usize>, f32) {
     let mut path = vec![start];
     path.reserve(n_nodes + 1);
@@ -25,8 +25,6 @@ fn find_path(
     visited[start] = true;
 
     let mut curr = start;
-
-    let mut rng = SmallRng::from_seed(seed);
 
     let mut cost = 0.0;
 
@@ -54,7 +52,7 @@ fn find_path(
         }
 
         let dist = WeightedIndex::new(&weights).unwrap();
-        let next = choices[dist.sample(&mut rng)];
+        let next = choices[dist.sample(rng)];
 
         cost += g[curr * n_nodes + next]; // update cost based on distance
 
@@ -78,139 +76,126 @@ use std::{
 };
 
 pub fn run(
-    g: &Graph,
+    g: &Arc<[f32]>,
     p: &mut Pheromones,
-    n_iters: usize, // this will be ignored now
-    n_ants: usize,
+    greedy_score: f32,
     n_nodes: usize,
-    mut rho: f32,
-    mut alpha: f32,
-    mut beta: f32,
-    reset_time: usize,
-    reset_rho: f32,
+    n_ants: usize,
+    n_iters: usize,
+    alpha: f32,
+    beta: f32,
+    rho: f32,
     pheta: f32,
-    seed: &[u8; 32],
-) -> anyhow::Result<(Vec<usize>, f32, Vec<f32>, Vec<f32>)> {
-    let graph = &g.values;
-
-    let best_path = Arc::new(Mutex::new((vec![], f32::INFINITY)));
-    let running = Arc::new(AtomicBool::new(true));
-
-    // Clone handles for signal handler
-    let best_path_clone = Arc::clone(&best_path);
-    let running_clone = Arc::clone(&running);
-
-    ctrlc::set_handler(move || {
-        println!("\nInterrupted! Saving best path...");
-        running_clone.store(false, Ordering::SeqCst);
-
-        let (path, score) = &*best_path_clone.lock();
-        if !path.is_empty() {
-            let mut file = File::create("best_path.txt").expect("Failed to create file");
-            writeln!(file, "score = {:.4}", score).ok();
-            writeln!(file, "path = {:?}", path).ok();
-            println!("Best path saved to 'best_path.txt'");
-        } else {
-            println!("No path found to save.");
-        }
-    })?;
-
-    let tau = 10.0;
+    reset_rho: f32,
+    reset_time: usize,
+    running: Arc<AtomicBool>,
+) -> Option<(Vec<usize>, f32)> {
+    let mut best_path = None;
+    let mut best_score = f32::MAX;
     let mut stagnation_counter = 0;
+    let initial_pheromone = 1.0 / (n_nodes as f32 * n_nodes as f32);
 
-    let mut master_rng = ChaCha8Rng::from_seed(*seed);
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("best_path_log.txt")
+        .expect("Failed to open best_path_log.txt");
 
-    let mut j = 0;
-    while running.load(Ordering::SeqCst) {
-        println!("{j:?} {:?}", best_path.clone().lock().1);
+    for j in 0..n_iters {
+        if !running.load(Ordering::SeqCst) {
+            eprintln!("Interrupted at iteration {j}, saving best path...");
+            break;
+        }
 
-        let progress = (j as f32).min(1000.0) / 1000.0; // dampen beyond 1000 iters
+        let mut master_rng = rand::rng();
 
-        let alpha_adj = alpha * (1.0 + progress);
-        let beta_adj = beta * (1.0 - progress * 0.5);
-        let rho_adj = rho * (1.0 - progress * 0.5);
-
-        let runs: Vec<([u8; 32], usize)> = (0..n_ants)
+        let seeds: Vec<[u8; 32]> = (0..n_ants)
             .map(|_| {
-                let mut s = [0u8; 32];
-                master_rng.fill_bytes(&mut s);
-                let idx = master_rng.random_range(0..n_nodes);
-                (s, idx)
+                let mut seed = [0u8; 32];
+                master_rng.fill_bytes(&mut seed);
+                seed
             })
             .collect();
 
-        let improved;
-
-        let results: Vec<(Vec<usize>, f32)> = runs
+        let results: Vec<_> = seeds
             .into_par_iter()
-            .map(|(s, to_find)| {
-                find_path(graph, &p.values, n_nodes, to_find, alpha_adj, beta_adj, s)
+            .map(|seed| {
+                let mut rng = SmallRng::from_seed(seed);
+                let start = rng.next_u32() as usize % n_nodes;
+                find_path(g, &p.values, n_nodes, start, alpha, beta, &mut rng)
             })
             .collect();
 
-        let mut deltas = vec![0.0f32; n_nodes * n_nodes];
-
+        // Find best path this iteration
         let (best_this_iter_path, best_this_iter_score) = results
             .iter()
             .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
             .unwrap();
 
-        let mut best = best_path.lock();
-        if *best_this_iter_score < best.1 {
-            best.0 = best_this_iter_path.clone();
-            best.1 = *best_this_iter_score;
-            improved = true;
-        } else {
-            improved = false;
-        }
-
-        // Only reinforce best path of this iteration
-        let influence = pheta * ((1.0 / best_this_iter_score).powf(1.0 + 0.5 * progress));
-
-        for i in 0..best_this_iter_path.len() - 1 {
-            let from = best_this_iter_path[i];
-            let to = best_this_iter_path[i + 1];
-
-            let idx1 = from * n_nodes + to;
-            let idx2 = to * n_nodes + from;
-
-            deltas[idx1] += influence;
-            deltas[idx2] += influence;
-        }
-
-        if !improved {
-            stagnation_counter += 1;
-        } else {
+        if *best_this_iter_score < best_score {
+            best_score = *best_this_iter_score;
+            best_path = Some(best_this_iter_path.clone());
             stagnation_counter = 0;
+
+            writeln!(
+                file,
+                "Iteration {j}, New Best Score: {best_score}\nBest Path: {:?}\n",
+                best_this_iter_path
+            )
+            .expect("Failed to write to best_path_log.txt");
+
+            file.flush().expect("Failed to flush file");
+        } else {
+            stagnation_counter += 1;
         }
 
-        if stagnation_counter >= 150 {
-            println!("Resetting pheromones due to stagnation");
+        // Reset if stagnating
+        if stagnation_counter >= reset_time {
             for val in &mut p.values {
-                *val = 1.0;
+                *val = initial_pheromone;
             }
             stagnation_counter = 0;
-            j += 1;
             continue;
         }
 
-        let rho_strong = if stagnation_counter >= 50 {
-            rho_adj * 2.0
+        // --- Build delta matrix ---
+        let mut deltas = vec![0.0; n_nodes * n_nodes];
+        let progress = j as f32 / n_iters as f32;
+
+        for (path, cost) in &results {
+            if !cost.is_finite() || *cost <= 0.0 {
+                continue;
+            }
+
+            // More emphasis on better paths over time
+            let influence = pheta * ((1.0 / cost).powf(1.0 + 0.5 * progress));
+
+            for i in 0..path.len() - 1 {
+                let from = path[i];
+                let to = path[i + 1];
+                let idx1 = from * n_nodes + to;
+                let idx2 = to * n_nodes + from;
+
+                deltas[idx1] += influence;
+                deltas[idx2] += influence;
+            }
+        }
+
+        // --- Pheromone evaporation + reinforcement ---
+        let rho_adj = if stagnation_counter >= 50 {
+            rho * 2.0
         } else {
-            rho_adj
+            rho
         };
 
         p.values
             .par_iter_mut()
             .enumerate()
             .for_each(|(i, pher_val)| {
-                // Evaporation
-                *pher_val *= 1.0 - rho_strong;
-
-                // Deposit (from best path delta matrix)
+                *pher_val *= 1.0 - rho_adj;
                 *pher_val += deltas[i];
 
-                // Clamp to avoid zero or nan
+                // Clamp values to avoid degenerate values
                 if !pher_val.is_finite() || *pher_val <= 1e-8 {
                     *pher_val = 1e-6;
                 } else if *pher_val > 1e6 {
@@ -218,11 +203,19 @@ pub fn run(
                 }
             });
 
-        j += 1;
+        eprintln!("Iteration {j}, Best Score: {best_score}");
     }
 
-    let best = best_path.lock();
-    Ok((best.0.clone(), best.1, vec![], vec![]))
+    if let Some(ref path) = best_path {
+        if let Err(e) = std::fs::write(
+            "best_path.txt",
+            format!("Best score: {}\nBest path: {:?}\n", best_score, path),
+        ) {
+            eprintln!("Failed to save best path: {}", e);
+        }
+    }
+
+    best_path.map(|path| (path, best_score))
 }
 
 pub fn greedy_path(g: &Arc<[f32]>, n_nodes: usize, start: usize) -> (Vec<usize>, f32) {

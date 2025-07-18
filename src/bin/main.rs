@@ -1,5 +1,5 @@
 use abfs::agent::greedy_path;
-use chrono::Local;
+use chrono::{Local, Utc};
 use plotters::prelude::*;
 use rand::distr::uniform;
 use rand::rngs::SmallRng;
@@ -21,7 +21,7 @@ use abfs::{
 fn main() -> anyhow::Result<()> {
     create_dir_all("results")?;
 
-    let mut f = File::open("nearest1000.txt")?;
+    let mut f = File::open("nearest10000.txt")?;
 
     println!("Reading graph...");
     let (g, n) = read_graph(&mut f)?;
@@ -38,7 +38,7 @@ fn main() -> anyhow::Result<()> {
 
     let reset_rho = 0.3;
     let reset_time = usize::MAX;
-    let n_iters = 500;
+    let n_iters = 10000;
     println!(
         "Running with alpha={:.2}, beta={:.2}, rho={:.2}, reset_time={}, reset_rho={:.2}, pheta={:.2}, ants={}",
         alpha, beta, rho, reset_time, reset_rho, pheta, n_ants
@@ -51,20 +51,32 @@ fn main() -> anyhow::Result<()> {
         greedy_p.len()
     );
 
-    run(
-        &g,
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+
+    ctrlc::set_handler(move || {
+        eprintln!("Ctrl+C received, stopping...");
+        r.store(false, Ordering::SeqCst);
+    })
+    .expect("Error setting Ctrl+C handler");
+
+    if let Some((best_path, best_score)) = run(
+        &g.values,
         &mut Pheromones::new(n, greedy_score),
-        n_iters,
-        n_ants,
+        greedy_score,
         n,
-        rho,
+        n_ants,
+        n_iters,
         alpha,
         beta,
-        reset_time,
-        reset_rho,
+        rho,
         pheta,
-        &seed,
-    );
+        reset_rho,
+        reset_time,
+        Arc::new(AtomicBool::new(true)),
+    ) {
+        save_best_path(&best_path, best_score)?;
+    }
 
     // ctrlc::set_handler(move || {
     //     r.store(false, Ordering::SeqCst);
@@ -107,117 +119,15 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run_simulation(
-    g: &Graph,
-    answer: &Vec<usize>,
-    p: &mut Pheromones,
-    n: usize,
-    n_iters: usize,
-    n_ants: usize,
-    alpha: f32,
-    beta: f32,
-    rho: f32,
-    reset_time: usize,
-    reset_rho: f32,
-    pheta: f32,
-    timestamp: &str,
-    seed: &[u8; 32],
-) -> anyhow::Result<()> {
-    let t1 = Local::now();
+fn save_best_path(path: &[usize], score: f32) -> std::io::Result<()> {
+    let now = Utc::now();
+    // Format timestamp for filename (e.g. 2025-07-18T11-30-00Z)
+    let timestamp = now.format("%Y-%m-%dT%H-%M-%SZ").to_string();
 
-    let (path, score, scores, phers) = run(
-        g, p, n_iters, n_ants, n, rho, alpha, beta, reset_time, reset_rho, pheta, seed,
-    )?;
+    let filename = format!("best_path_{}.txt", timestamp);
+    let mut file = File::create(filename)?;
 
-    let t2 = Local::now();
-
-    let params_path = format!("results/params_{}.txt", timestamp);
-    write_params(
-        &params_path,
-        &[
-            ("alpha", alpha),
-            ("beta", beta),
-            ("rho", rho),
-            ("reset_time", reset_time as f32),
-            ("reset_rho", reset_rho),
-            ("pheta", pheta),
-            ("ants", n_ants as f32),
-            ("iters", n_iters as f32),
-            ("score", score),
-            ("result", g.calc_distance(&path, n)),
-            ("time (ms)", (t2 - t1).num_milliseconds() as f32),
-        ],
-        &seed,
-    );
-
-    // build_graph(timestamp, scores, phers);
-
-    println!("RESULT: {:?}", g.calc_distance(&path, n));
-    println!("ANSWER: {:?}", g.calc_distance(&answer, n));
-    Ok(())
-}
-
-fn rand_range<T: uniform::SampleUniform + Copy + std::cmp::PartialOrd>(
-    range: std::ops::Range<T>,
-) -> T {
-    rand::rng().random_range(range)
-}
-
-fn write_params(
-    path: &str,
-    params: &[(&str, f32)],
-    seed_bytes: &[u8; 32],
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut file = File::create(path)?;
-    for (name, value) in params {
-        writeln!(file, "{} = {}", name, value)?;
-    }
-
-    writeln!(file, "seed_bytes = {}", hex::encode(seed_bytes))?;
-
-    Ok(())
-}
-
-fn build_graph(
-    timestamp: &str,
-    scores: Vec<f32>,
-    phers: Vec<f32>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let score_path = format!("results/scores_{}.png", timestamp);
-    let pher_path = format!("results/pheromones_{}.png", timestamp);
-
-    plot_single_series(&score_path, "Scores over Time", "Score", &scores)?;
-    plot_single_series(&pher_path, "Pheromones over Time", "Pheromone", &phers)?;
-    Ok(())
-}
-
-fn plot_single_series(
-    filename: &str,
-    title: &str,
-    y_label: &str,
-    data: &[f32],
-) -> Result<(), Box<dyn std::error::Error>> {
-    let root = BitMapBackend::new(filename, (1280, 720)).into_drawing_area();
-    root.fill(&WHITE)?;
-
-    let x_range = 0..data.len();
-    let y_min = data.iter().copied().fold(f32::INFINITY, f32::min);
-    let y_max = data.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-
-    let mut chart = ChartBuilder::on(&root)
-        .caption(title, ("sans-serif", 30))
-        .margin(10)
-        .x_label_area_size(40)
-        .y_label_area_size(60)
-        .build_cartesian_2d(x_range.clone(), y_min..y_max)?;
-
-    chart
-        .configure_mesh()
-        .x_desc("Iteration")
-        .y_desc(y_label)
-        .draw()?;
-
-    chart.draw_series(LineSeries::new(x_range.zip(data.iter().copied()), &RED))?;
-
+    writeln!(file, "Best score: {}", score)?;
+    writeln!(file, "Best path: {:?}", path)?;
     Ok(())
 }
