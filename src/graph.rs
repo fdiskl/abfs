@@ -23,9 +23,9 @@ pub struct Pheromones {
 }
 
 impl Pheromones {
-    pub fn new(n: usize) -> Self {
+    pub fn new(n: usize, greedy_n: f32) -> Self {
         Self {
-            values: vec![0.0; n * n],
+            values: vec![2.0 / greedy_n; n * n],
         }
     }
 

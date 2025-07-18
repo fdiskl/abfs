@@ -1,3 +1,4 @@
+use abfs::agent::greedy_path;
 use chrono::Local;
 use plotters::prelude::*;
 use rand::distr::uniform;
@@ -8,62 +9,99 @@ use std::fs::{File, create_dir_all};
 use std::io::Write;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::usize::{self, MAX};
 use std::{thread, time};
 
 use abfs::{
     agent::run,
     graph::{Graph, Pheromones},
-    input::{read_answer, read_graph},
+    input::read_graph,
 };
 
 fn main() -> anyhow::Result<()> {
     create_dir_all("results")?;
 
-    let mut f = File::open("berlin52.txt")?;
-    let mut answer_f = File::open("berlin52_answer.txt")?;
+    let mut f = File::open("nearest1000.txt")?;
 
+    println!("Reading graph...");
     let (g, n) = read_graph(&mut f)?;
-    let answer = read_answer(&mut answer_f, n)?;
+    println!("We have graph :)");
 
-    let keep_running = Arc::new(AtomicBool::new(true));
-    let r = keep_running.clone();
+    let mut seed = [0u8; 32];
+    rand::rng().fill(&mut seed);
 
-    ctrlc::set_handler(move || {
-        r.store(false, Ordering::SeqCst);
-    })?;
+    let alpha = 2.0;
+    let beta = 5.0;
+    let rho = 0.5;
+    let pheta = 1.0;
+    let n_ants = 20;
 
-    while keep_running.load(Ordering::SeqCst) {
-        let mut seed = [0u8; 32];
-        rand::rng().fill(&mut seed);
+    let reset_rho = 0.3;
+    let reset_time = usize::MAX;
+    let n_iters = 500;
+    println!(
+        "Running with alpha={:.2}, beta={:.2}, rho={:.2}, reset_time={}, reset_rho={:.2}, pheta={:.2}, ants={}",
+        alpha, beta, rho, reset_time, reset_rho, pheta, n_ants
+    );
 
-        let alpha = rand_range(0.5..3.0);
-        let beta = rand_range(0.5..4.0);
-        let rho = rand_range(0.01..0.5);
-        let reset_time = rand_range(50..1000) as usize;
-        let reset_rho = rand_range(0.0..0.8);
-        let pheta = rand_range(25.0..300.0);
-        let n_ants = 8;
-        let n_iters = 5000;
+    let (greedy_p, greedy_score) = greedy_path(&g.values, n, 0);
+    println!(
+        "{:?} {greedy_score:?} {:?}",
+        g.calc_distance(&greedy_p, n),
+        greedy_p.len()
+    );
 
-        let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
-        let mut p = Pheromones::new(n);
+    run(
+        &g,
+        &mut Pheromones::new(n, greedy_score),
+        n_iters,
+        n_ants,
+        n,
+        rho,
+        alpha,
+        beta,
+        reset_time,
+        reset_rho,
+        pheta,
+        &seed,
+    );
 
-        println!(
-            "Running with alpha={:.2}, beta={:.2}, rho={:.2}, reset_time={}, reset_rho={:.2}, pheta={:.2}, ants={}",
-            alpha, beta, rho, reset_time, reset_rho, pheta, n_ants
-        );
+    // ctrlc::set_handler(move || {
+    //     r.store(false, Ordering::SeqCst);
+    // })?;
 
-        let result = run_simulation(
-            &g, &answer, &mut p, n, n_iters, n_ants, alpha, beta, rho, reset_time, reset_rho,
-            pheta, &timestamp, &seed,
-        );
+    // while keep_running.load(Ordering::SeqCst) {
+    //     let mut seed = [0u8; 32];
+    //     rand::rng().fill(&mut seed);
 
-        if let Err(e) = result {
-            eprintln!("Simulation failed: {:?}", e);
-        }
+    //     let alpha = 1.0;
+    //     let beta = 2.0;
+    //     let rho = 0.1;
+    //     let reset_rho = 0.6;
+    //     let reset_time = 200;
+    //     let pheta = 1.0;
+    //     let n_ants = 4;
+    //     let n_iters = 1000;
 
-        thread::sleep(time::Duration::from_millis(100)); // Avoid too rapid looping
-    }
+    //     let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
+    //     let mut p = Pheromones::new(n);
+
+    //     println!(
+    //         "Running with alpha={:.2}, beta={:.2}, rho={:.2}, reset_time={}, reset_rho={:.2}, pheta={:.2}, ants={}",
+    //         alpha, beta, rho, reset_time, reset_rho, pheta, n_ants
+    //     );
+
+    //     let result = run_simulation(
+    //         &g, &answer, &mut p, n, n_iters, n_ants, alpha, beta, rho, reset_time, reset_rho,
+    //         pheta, &timestamp, &seed,
+    //     );
+
+    //     if let Err(e) = result {
+    //         eprintln!("Simulation failed: {:?}", e);
+    //     }
+
+    //     thread::sleep(time::Duration::from_millis(100)); // Avoid too rapid looping
+    // }
 
     println!("Exiting gracefully.");
     Ok(())

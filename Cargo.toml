@@ -7,8 +7,19 @@ edition = "2024"
 anyhow = "1.0.98"
 chrono = "0.4.41"
 ctrlc = "3.4.7"
+fast-float = "0.2.0"
 hex = "0.4.3"
+parking_lot = "0.12.4"
 plotters = "0.3.7"
 rand = "0.9.1"
 rand_chacha = "0.9.0"
 rayon = "1.10.0"
+
+
+[profile.release]
+opt-level = 3          # Maximum speed optimizations
+lto = "fat"            # Full Link Time Optimization across all crates
+codegen-units = 1      # Better optimization; disables parallel codegen
+panic = "abort"        # Smaller & faster binary if unwinding isn't needed
+strip = true           # Remove debug symbols (requires nightly or Cargo 1.70+)
+incremental = false    # Disable incremental builds for cleaner optimization
