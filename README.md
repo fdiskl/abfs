@@ -1,4 +1,5 @@
-# abfs
+# abfs 25' project
+all of this code was written in few days without any plans for the future, so its kinda rough. i think rust version should be working, but is't still slow
 
 ## Alg
 
